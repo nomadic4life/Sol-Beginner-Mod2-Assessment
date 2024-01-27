@@ -77,8 +77,10 @@ export default function App() {
   );
 
   // create a state variable for our connection
-  const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
-  
+  // const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
+  const connection = new Connection("http://127.0.0.1:8899", "confirmed");
+
+
   // connection to use with local solana test validator
   // const connection = new Connection("http://127.0.0.1:8899", "confirmed");
 
@@ -97,22 +99,37 @@ export default function App() {
    */
   const createSender = async () => {
     // create a new Keypair
+    const sender = Keypair.generate()
 
 
-    console.log('Sender account: ', senderKeypair!.publicKey.toString());
+    // console.log('Sender account: ', senderKeypair!.publicKey.toString());
+    console.log('Sender account: ', sender.publicKey.toString());
     console.log('Airdropping 2 SOL to Sender Wallet');
 
     // save this new KeyPair into this state variable
-    setSenderKeypair(/*KeyPair here*/);
+    setSenderKeypair(sender);
 
     // request airdrop into this new account
-    
+    let airdropSig = await connection.requestAirdrop(
+      sender.publicKey,
+      2 * LAMPORTS_PER_SOL,
+    )
+
 
     const latestBlockHash = await connection.getLatestBlockhash();
 
-    // now confirm the transaction
+    // now confirm the transaction -> TransactionConfimationStrategy
+    await connection.confirmTransaction({
+      ...latestBlockHash,
+      signature: airdropSig
+    }, 'confirmed')
 
-    console.log('Wallet Balance: ' + (await connection.getBalance(senderKeypair!.publicKey)) / LAMPORTS_PER_SOL);
+    // deprecated
+    // await connection.confirmTransaction(airdropSig)
+
+    // console.log('Wallet Balance: ' + (await connection.getBalance(senderKeypair!.publicKey)) / LAMPORTS_PER_SOL);
+    console.log('Wallet Balance: ' + (await connection.getBalance(sender.publicKey)) / LAMPORTS_PER_SOL);
+
   }
 
   /**
@@ -127,9 +144,12 @@ export default function App() {
     if (solana) {
       try {
         // connect to phantom wallet and return response which includes the wallet public key
+        const wallet = await provider?.connect();
+        // const {publicKey} = await provider?.connect();
+
 
         // save the public key of the phantom wallet to the state variable
-        setReceiverPublicKey(/*PUBLIC KEY*/);
+        setReceiverPublicKey(wallet?.publicKey);
       } catch (err) {
         console.log(err);
       }
@@ -160,11 +180,23 @@ export default function App() {
    * @description transfer SOL from sender wallet to connected wallet.
    * This function is called when the Transfer SOL to Phantom Wallet button is clicked
    */
-  const transferSol = async () => {    
-    
+  const transferSol = async () => {
+
     // create a new transaction for the transfer
+    const transaction = new Transaction().add(
+      SystemProgram.transfer({
+        fromPubkey: senderKeypair!.publicKey,
+        toPubkey: receiverPublicKey!,
+        lamports: 1 * LAMPORTS_PER_SOL,
+      })
+    );
 
     // send and confirm the transaction
+    await sendAndConfirmTransaction(
+      connection,
+      transaction,
+      [senderKeypair!]
+    );
 
     console.log("transaction sent and confirmed");
     console.log("Sender Balance: " + await connection.getBalance(senderKeypair!.publicKey) / LAMPORTS_PER_SOL);
@@ -176,7 +208,7 @@ export default function App() {
     <div className="App">
       <header className="App-header">
         <h2>Module 2 Assessment</h2>
-        <span className ="buttons">
+        <span className="buttons">
           <button
             style={{
               fontSize: "16px",
@@ -220,17 +252,17 @@ export default function App() {
             </div>
           )}
           {provider && receiverPublicKey && senderKeypair && (
-          <button
-            style={{
-              fontSize: "16px",
-              padding: "15px",
-              fontWeight: "bold",
-              borderRadius: "5px",
-            }}
-            onClick={transferSol}
-          >
-            Transfer SOL to Phantom Wallet
-          </button>
+            <button
+              style={{
+                fontSize: "16px",
+                padding: "15px",
+                fontWeight: "bold",
+                borderRadius: "5px",
+              }}
+              onClick={transferSol}
+            >
+              Transfer SOL to Phantom Wallet
+            </button>
           )}
         </span>
         {!provider && (
